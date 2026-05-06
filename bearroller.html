@@ -1,0 +1,146 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Black Bear Party Tracker</title>
+<style>
+body { font-family: Arial, sans-serif; background: #1e1e1e; color: white; text-align: center; margin:0; padding:10px; }
+h1 { font-size:24px; margin-bottom:10px; }
+.statBlock { background:#2c2c2c; border-radius:10px; padding:10px; margin:10px auto; max-width:600px; text-align:left; }
+button { font-size:16px; padding:8px 12px; margin:4px; border-radius:6px; border:none; cursor:pointer; }
+.rollBtn { background:#4caf50; color:white; }
+.clearBtn { background:#c0392b; color:white; }
+.hit { color: #2ecc71; font-weight:bold; font-size:18px; }
+.miss { color: #e74c3c; font-weight:bold; font-size:18px; }
+.crit { color: gold; font-weight:bold; font-size:22px; }
+.dmg { font-size:20px; font-weight:bold; display:inline-block; margin-left:5px; }
+.hpInput, .acInput { width:50px; font-size:16px; text-align:center; }
+select { font-size:16px; padding:4px; margin:4px; }
+.output { background:#2c2c2c; padding:5px; border-radius:6px; margin-top:5px; }
+</style>
+</head>
+<body>
+
+<h1>Black Bear Party Tracker</h1>
+
+<div class="statBlock">
+<b>Group Initiative:</b>
+<span id="bearGroupInit">Not rolled</span>
+<button class="rollBtn" onclick="rollGroupInitiative()">Roll Initiative</button>
+</div>
+
+<div class="statBlock">
+<b>AC Override:</b> <input type="number" id="acOverrideInput" class="acInput" value="">
+<button class="rollBtn" onclick="applyACOverride()">Apply to All Bears</button>
+</div>
+
+<div id="bears"></div>
+
+<script>
+const NUM_BEARS = 4;
+
+function rollDie(sides){ return Math.floor(Math.random()*sides)+1; }
+function rollDice(num,sides){
+    let rolls=[], total=0;
+    for(let i=0;i<num;i++){ let r=rollDie(sides); rolls.push(r); total+=r;}
+    return {rolls,total};
+}
+function rollD20(mode){
+    let r1=rollDie(20);
+    if(mode==="normal") return {roll:r1,text:r1};
+    let r2=rollDie(20);
+    if(mode==="adv") return {roll:Math.max(r1,r2),text:r1+" , "+r2};
+    if(mode==="dis") return {roll:Math.min(r1,r2),text:r1+" , "+r2};
+}
+
+function attack(mod,dice,sides,bonus,ac,mode){
+    let d20=rollD20(mode);
+    let crit=d20.roll===20;
+    let hitTotal=d20.roll+mod;
+    let atkClass="miss";
+    let dmgText="";
+    
+    if(hitTotal >= ac){
+        atkClass = crit ? "crit" : "hit";
+        let dmgDice = dice;
+        if(crit) dmgDice *= 2;
+        let dmg = rollDice(dmgDice,sides);
+        let dmgTotal = dmg.total + bonus;
+        dmgText = `<span class='dmg'> | dmg [${dmg.rolls.join(",")}] + bonus = ${dmgTotal}</span>`;
+    }
+    
+    return {rollText:d20.text, hitTotal:hitTotal, crit:crit, dmgText:dmgText, mod:mod, atkClass:atkClass};
+}
+
+function savingThrow(mod,mode){
+    let d20=rollD20(mode);
+    return {rollText:d20.text, total:d20.roll+mod, mod:mod};
+}
+
+function formatAttack(name,atk){
+    return `${name}: d20[${atk.rollText}] + ${atk.mod} → <span class='${atk.atkClass}'>${atk.hitTotal}</span>${atk.dmgText}<br>`;
+}
+
+function formatSave(name,save){
+    return name+" Save: d20["+save.rollText+"] + "+save.mod+" → <span class='total'>"+save.total+"</span><br>";
+}
+
+function rollBearAttack(i){
+    let ac=parseInt(document.getElementById("targetAC"+i).value)||0;
+    let mode=document.getElementById("attackMode"+i).value;
+    const bite=attack(3,1,6,2,ac,mode);
+    const claw=attack(3,2,4,2,ac,mode);
+    document.getElementById("bearAttack"+i).innerHTML=formatAttack("Bite",bite)+formatAttack("Claw",claw);
+}
+
+function rollBearSave(i,mod,name){
+    let mode=document.getElementById("saveMode"+i).value;
+    const save=savingThrow(mod,mode);
+    document.getElementById("bearSave"+i+name).innerHTML=formatSave(name,save);
+}
+
+function resetAttacks(i){ document.getElementById("bearAttack"+i).innerHTML=""; }
+function resetSaves(i){ ["STR","DEX","CON","INT","WIS","CHA"].forEach(stat=>document.getElementById("bearSave"+i+stat).innerHTML=""); }
+function resetHP(i){ document.getElementById("hp"+i).value=19; }
+function changeHP(i){ let hp=document.getElementById("hp"+i); hp.value=Math.max(0,Math.min(19,parseInt(hp.value)||0)); }
+function rollGroupInitiative(){ const ini=rollD20("normal"); document.getElementById("bearGroupInit").innerHTML="d20["+ini.text+"] +0 → "+(ini.roll+0); }
+function applyACOverride(){ let val=parseInt(document.getElementById("acOverrideInput").value); if(isNaN(val)) return; for(let i=1;i<=NUM_BEARS;i++){document.getElementById("targetAC"+i).value=val;}}
+
+function createBearBlocks(){
+    const container=document.getElementById("bears");
+    for(let i=1;i<=NUM_BEARS;i++){
+        let block=document.createElement("div");
+        block.className="statBlock";
+        block.innerHTML=`
+<b>Bear ${i}</b><br>
+AC: 11 | HP: <input type="number" id="hp${i}" class="hpInput" value="19" min="0" max="19" oninput="changeHP(${i})">
+<button class="clearBtn" onclick="resetHP(${i})">Reset HP</button><br>
+Target AC: <input type="number" id="targetAC${i}" class="acInput" value="15" min="0"><br>
+Attack Roll Mode: <select id="attackMode${i}"><option value="normal">Normal</option><option value="adv">Advantage</option><option value="dis">Disadvantage</option></select>
+Saving Throw Mode: <select id="saveMode${i}"><option value="normal">Normal</option><option value="adv">Advantage</option><option value="dis">Disadvantage</option></select><br>
+Speed: 40 ft, climb 30 ft<br>
+STR 15 (+2), DEX 10 (+0), CON 14 (+2), INT 2 (-4), WIS 12 (+1), CHA 7 (-2)<br>
+<b>Traits:</b> Keen Smell, Multiattack (1 bite + 1 claw)<br><br>
+<b>Attacks:</b>
+<div id="bearAttack${i}" class="output"></div>
+<button class="rollBtn" onclick="rollBearAttack(${i})">Roll Attacks</button>
+<button class="clearBtn" onclick="resetAttacks(${i})">Reset Attacks</button><br><br>
+<b>Saving Throws:</b><br>
+<div id="bearSave${i}STR" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},2,'STR')">STR</button>
+<div id="bearSave${i}DEX" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},0,'DEX')">DEX</button>
+<div id="bearSave${i}CON" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},2,'CON')">CON</button>
+<div id="bearSave${i}INT" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},-4,'INT')">INT</button>
+<div id="bearSave${i}WIS" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},1,'WIS')">WIS</button>
+<div id="bearSave${i}CHA" class="output"></div><button class="rollBtn" onclick="rollBearSave(${i},-2,'CHA')">CHA</button>
+<button class="clearBtn" onclick="resetSaves(${i})">Reset Saves</button>
+`;
+        container.appendChild(block);
+    }
+}
+createBearBlocks();
+</script>
+
+</body>
+</html>
+```
